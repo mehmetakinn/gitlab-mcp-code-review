@@ -211,6 +211,79 @@ def fetch_gerrit_change(ctx: Context, change_id: str, patchset_number: str = Non
         "files": processed_files
     }
 
+@mcp.tool()
+def fetch_patchset_diff(ctx: Context, change_id: str, base_patchset: str, target_patchset: str, file_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Fetch differences between two patchsets of a Gerrit change.
+    
+    Args:
+        change_id: The Gerrit change ID
+        base_patchset: The base patchset number to compare from
+        target_patchset: The target patchset number to compare to
+        file_path: Optional specific file path to get diff for. If not provided, returns diffs for all changed files.
+    Returns:
+        Dict containing the diff information between the patchsets
+    """
+    # Get change details using REST API
+    change_endpoint = f"a/changes/{change_id}/detail?o=ALL_REVISIONS&o=ALL_FILES"
+    change_info = make_gerrit_rest_request(ctx, change_endpoint)
+    
+    if not change_info:
+        raise ValueError(f"Change {change_id} not found")
+    
+    revisions = change_info.get("revisions", {})
+    
+    # Find revision hashes for both patchsets
+    base_revision = None
+    target_revision = None
+    for rev, rev_info in revisions.items():
+        if str(rev_info.get("_number")) == str(base_patchset):
+            base_revision = rev
+        if str(rev_info.get("_number")) == str(target_patchset):
+            target_revision = rev
+            
+    if not base_revision or not target_revision:
+        available_patchsets = sorted([str(info.get("_number")) for info in revisions.values()])
+        raise ValueError(f"Patchset(s) not found. Available patchsets: {', '.join(available_patchsets)}")
+    
+    # If specific file path is provided, just get diff for that file
+    if file_path:
+        encoded_path = quote(file_path, safe='')
+        diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files/{encoded_path}/diff?base={base_revision}"
+        diff_info = make_gerrit_rest_request(ctx, diff_endpoint)
+        return {
+            "file_path": file_path,
+            "diff": diff_info
+        }
+    
+    # Otherwise get diffs for all changed files
+    target_files = revisions[target_revision].get("files", {})
+    processed_diffs = []
+    
+    for file_path, file_info in target_files.items():
+        if file_path == "/COMMIT_MSG":
+            continue
+            
+        encoded_path = quote(file_path, safe='')
+        diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files/{encoded_path}/diff?base={base_revision}"
+        diff_info = make_gerrit_rest_request(ctx, diff_endpoint)
+        
+        file_data = {
+            "path": file_path,
+            "status": file_info.get("status", "MODIFIED"),
+            "lines_inserted": file_info.get("lines_inserted", 0),
+            "lines_deleted": file_info.get("lines_deleted", 0),
+            "size_delta": file_info.get("size_delta", 0),
+            "diff": diff_info
+        }
+        processed_diffs.append(file_data)
+    
+    return {
+        "base_patchset": base_patchset,
+        "target_patchset": target_patchset,
+        "files": processed_diffs
+    }
+
 if __name__ == "__main__":
     try:
         logger.info("Starting Gerrit Review MCP server")

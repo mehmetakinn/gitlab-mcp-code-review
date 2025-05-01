@@ -224,7 +224,7 @@ def fetch_patchset_diff(ctx: Context, change_id: str, base_patchset: str, target
     Returns:
         Dict containing the diff information between the patchsets
     """
-    # Get change details using REST API
+    # First get the revision info for both patchsets
     change_endpoint = f"a/changes/{change_id}/detail?o=ALL_REVISIONS&o=ALL_FILES"
     change_info = make_gerrit_rest_request(ctx, change_endpoint)
     
@@ -245,43 +245,42 @@ def fetch_patchset_diff(ctx: Context, change_id: str, base_patchset: str, target
     if not base_revision or not target_revision:
         available_patchsets = sorted([str(info.get("_number")) for info in revisions.values()])
         raise ValueError(f"Patchset(s) not found. Available patchsets: {', '.join(available_patchsets)}")
+
+    # Get the diff between revisions using Gerrit's comparison endpoint
+    diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files"
+    if base_revision:
+        diff_endpoint += f"?base={base_revision}"
     
-    # If specific file path is provided, just get diff for that file
-    if file_path:
-        encoded_path = quote(file_path, safe='')
-        diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files/{encoded_path}/diff?base={base_revision}"
-        diff_info = make_gerrit_rest_request(ctx, diff_endpoint)
-        return {
-            "file_path": file_path,
-            "diff": diff_info
-        }
+    files_diff = make_gerrit_rest_request(ctx, diff_endpoint)
     
-    # Otherwise get diffs for all changed files
-    target_files = revisions[target_revision].get("files", {})
-    processed_diffs = []
-    
-    for file_path, file_info in target_files.items():
+    # Process the files that actually changed
+    changed_files = {}
+    for file_path, file_info in files_diff.items():
         if file_path == "/COMMIT_MSG":
             continue
             
-        encoded_path = quote(file_path, safe='')
-        diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files/{encoded_path}/diff?base={base_revision}"
-        diff_info = make_gerrit_rest_request(ctx, diff_endpoint)
-        
-        file_data = {
-            "path": file_path,
-            "status": file_info.get("status", "MODIFIED"),
-            "lines_inserted": file_info.get("lines_inserted", 0),
-            "lines_deleted": file_info.get("lines_deleted", 0),
-            "size_delta": file_info.get("size_delta", 0),
-            "diff": diff_info
-        }
-        processed_diffs.append(file_data)
+        if file_info.get("status") != "SAME":  # Only include files that actually changed
+            # Get detailed diff for this file
+            encoded_path = quote(file_path, safe='')
+            file_diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files/{encoded_path}/diff"
+            if base_revision:
+                file_diff_endpoint += f"?base={base_revision}"
+            diff_info = make_gerrit_rest_request(ctx, file_diff_endpoint)
+            
+            changed_files[file_path] = {
+                "status": file_info.get("status", "MODIFIED"),
+                "lines_inserted": file_info.get("lines_inserted", 0),
+                "lines_deleted": file_info.get("lines_deleted", 0),
+                "size_delta": file_info.get("size_delta", 0),
+                "diff": diff_info
+            }
     
     return {
+        "base_revision": base_revision,
+        "target_revision": target_revision,
         "base_patchset": base_patchset,
         "target_patchset": target_patchset,
-        "files": processed_diffs
+        "files": changed_files
     }
 
 if __name__ == "__main__":

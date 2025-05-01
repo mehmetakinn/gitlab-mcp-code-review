@@ -4,11 +4,11 @@ This MCP server provides integration with Gerrit code review system, allowing AI
 
 ## Features
 
-The server provides a streamlined tool for code review:
+The server provides a streamlined toolset for code review:
 
-### Review Change
+### Fetch Change Details
 ```python
-review_change(change_id: str, patchset_number: Optional[str] = None)
+fetch_gerrit_change(change_id: str, patchset_number: Optional[str] = None)
 ```
 - Fetches complete change information including files and patch sets
 - Shows detailed diff information for each modified file
@@ -20,6 +20,35 @@ review_change(change_id: str, patchset_number: Optional[str] = None)
   - Comments and review history
   - File modifications with diff content
   - Current patch set information
+
+### Compare Patchset Differences
+```python
+fetch_patchset_diff(change_id: str, base_patchset: str, target_patchset: str, file_path: Optional[str] = None)
+```
+- Compare differences between two patchsets of a change
+- View specific file differences or all changed files
+- Analyze code modifications across patchset versions
+- Track evolution of changes through review iterations
+
+### Example Usage
+
+Review a complete change:
+```python
+# Fetch latest patchset of change 23824
+change = fetch_gerrit_change("23824")
+```
+
+Compare specific patchsets:
+```python
+# Compare differences between patchsets 1 and 2 for change 23824
+diff = fetch_patchset_diff("23824", "1", "2")
+```
+
+View specific file changes:
+```python
+# Get diff for a specific file between patchsets
+file_diff = fetch_patchset_diff("23824", "1", "2", "path/to/file.swift")
+```
 
 ## Prerequisites
 

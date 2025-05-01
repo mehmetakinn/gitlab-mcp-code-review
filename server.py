@@ -136,7 +136,7 @@ mcp = FastMCP(
 )
 
 @mcp.tool()
-def fetch_gerrit_change(ctx: Context, change_id: str, patchset_number: Optional[str] = None) -> Dict[str, Any]:
+def fetch_gerrit_change(ctx: Context, change_id: str, patchset_number: str = None) -> Dict[str, Any]:
     """
     Fetch a Gerrit change and its contents.
     
@@ -166,11 +166,12 @@ def fetch_gerrit_change(ctx: Context, change_id: str, patchset_number: Optional[
         # Find specific patchset
         target_revision = None
         for rev, rev_info in revisions.items():
-            if str(rev_info.get("_number")) == patchset_number:
+            if str(rev_info.get("_number")) == str(patchset_number):
                 target_revision = rev
                 break
         if not target_revision:
-            raise ValueError(f"Patchset {patchset_number} not found")
+            available_patchsets = sorted([str(info.get("_number")) for info in revisions.values()])
+            raise ValueError(f"Patchset {patchset_number} not found. Available patchsets: {', '.join(available_patchsets)}")
     else:
         # Use current revision
         target_revision = current_revision

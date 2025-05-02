@@ -103,6 +103,40 @@ GERRIT_HTTP_PASSWORD=your-http-password
 - Generate new password
 - Copy the password to your environment or .env file
 
+## MCP Configuration
+
+To use this MCP server with Cursor, you need to add its configuration to your `~/.cursor/mcp.json` file. Here's the required configuration:
+
+```json
+{
+  "mcpServers": {
+    "gerrit-review-mcp": {
+      "command": "/path/to/your/workspace/gerrit-code-review-mcp/.venv/bin/python",
+      "args": [
+        "/path/to/your/workspace/gerrit-code-review-mcp/server.py",
+        "--transport",
+        "stdio"
+      ],
+      "cwd": "/path/to/your/workspace/gerrit-code-review-mcp",
+      "env": {
+        "PYTHONPATH": "/path/to/your/workspace/gerrit-code-review-mcp",
+        "VIRTUAL_ENV": "/path/to/your/workspace/gerrit-code-review-mcp/.venv",
+        "PATH": "/path/to/your/workspace/gerrit-code-review-mcp/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+      },
+      "stdio": true
+    }
+  }
+}
+```
+
+Replace `/path/to/your/workspace` with your actual workspace path. For example, if your project is in `/Users/username/projects/gerrit-code-review-mcp`, use that path instead.
+
+Make sure all paths in the configuration point to:
+- Your virtual environment's Python interpreter
+- The project's `server.py` file
+- The correct working directory
+- The virtual environment's bin directory in the PATH
+
 ## Implementation Details
 
 The server uses Gerrit REST API to interact with Gerrit, providing:

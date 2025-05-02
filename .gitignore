@@ -1,9 +1,10 @@
-# Python
+# Python-specific
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -15,27 +16,27 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-.env
-.venv
-env/
+# Virtual environments
+.venv/
 venv/
 ENV/
 
-# IDE
+# Environment variables
+.env
+
+# Editor/IDE specific
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# OS
 .DS_Store
-Thumbs.db
 
-# Project specific
-*.log 
+# Log files
+*.log
+
+# Local development
+uv.lock 

@@ -1,127 +1,95 @@
-# Gerrit Review MCP Server
+# GitLab MCP for Code Review
 
-This MCP server provides integration with Gerrit code review system, allowing AI assistants to review code changes and their details through a simple interface.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> This project is forked from [cayirtepeomer/gerrit-code-review-mcp](https://github.com/cayirtepeomer/gerrit-code-review-mcp) and adapted for GitLab integration.
+
+An MCP (Model Context Protocol) server for integrating AI assistants like Claude with GitLab's merge requests. This allows AI assistants to review code changes directly through the GitLab API.
 
 ## Features
 
-The server provides a streamlined toolset for code review:
-
-### Fetch Change Details
-```python
-fetch_gerrit_change(change_id: str, patchset_number: Optional[str] = None)
-```
-- Fetches complete change information including files and patch sets
-- Shows detailed diff information for each modified file
-- Displays file changes, insertions, and deletions
-- Supports reviewing specific patch sets
-- Returns comprehensive change details including:
-  - Project and branch information
-  - Author and reviewer details
-  - Comments and review history
-  - File modifications with diff content
-  - Current patch set information
-
-### Compare Patchset Differences
-```python
-fetch_patchset_diff(change_id: str, base_patchset: str, target_patchset: str, file_path: Optional[str] = None)
-```
-- Compare differences between two patchsets of a change
-- View specific file differences or all changed files
-- Analyze code modifications across patchset versions
-- Track evolution of changes through review iterations
-
-### Example Usage
-
-Review a complete change:
-```python
-# Fetch latest patchset of change 23824
-change = fetch_gerrit_change("23824")
-```
-
-Compare specific patchsets:
-```python
-# Compare differences between patchsets 1 and 2 for change 23824
-diff = fetch_patchset_diff("23824", "1", "2")
-```
-
-View specific file changes:
-```python
-# Get diff for a specific file between patchsets
-file_diff = fetch_patchset_diff("23824", "1", "2", "path/to/file.swift")
-```
-
-## Prerequisites
-
-- Python 3.10 or higher (Python 3.11 recommended)
-- Gerrit HTTP access credentials
-- HTTP password generated from Gerrit settings
-- Access to the `mcp[cli]` package repository (private package)
+- **Complete Merge Request Analysis**: Fetch full details about merge requests including diffs, commits, and comments
+- **File-Specific Diffs**: Analyze changes to specific files within merge requests
+- **Version Comparison**: Compare different branches, tags, or commits
+- **Review Management**: Add comments, approve, or unapprove merge requests
+- **Project Overview**: Get lists of all merge requests in a project
 
 ## Installation
 
+### Prerequisites
+
+- Python 3.10+ 
+- GitLab personal access token with API scope (read_api, api)
+- [Cursor IDE](https://cursor.sh/) for full MCP integration
+
+### Quick Start
+
 1. Clone this repository:
+
 ```bash
-git clone <repository-url>
-cd gerrit-review-mcp
+git clone https://github.com/yourusername/gitlab-mcp-code-review.git
+cd gitlab-mcp-code-review
 ```
 
 2. Create and activate a virtual environment:
+
 ```bash
-# For macOS/Linux:
 python -m venv .venv
-source .venv/bin/activate
-
-# For Windows:
-python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-3. Install this package in editable mode with its dependencies:
+3. Install dependencies:
+
 ```bash
-pip install -e .
+pip install -r requirements.txt
 ```
 
-## Configuration
+4. Create a `.env` file with your GitLab configuration (see `.env.example` for all options):
 
-1. Set up environment variables:
-```bash
-export GERRIT_HOST="gerrit.example.com"  # Your Gerrit server hostname
-export GERRIT_USER="your-username"       # Your Gerrit username
-export GERRIT_HTTP_PASSWORD="your-http-password"  # Your Gerrit HTTP password
+```
+# Required
+GITLAB_TOKEN=your_personal_access_token_here
+
+# Optional settings
+GITLAB_HOST=gitlab.com
+GITLAB_API_VERSION=v4
+LOG_LEVEL=INFO
 ```
 
-Or create a `.env` file:
-```
-GERRIT_HOST=gerrit.example.com
-GERRIT_USER=your-username
-GERRIT_HTTP_PASSWORD=your-http-password
-```
+## Configuration Options
 
-2. Generate HTTP password:
-- Log into your Gerrit web interface
-- Go to Settings > HTTP Credentials
-- Generate new password
-- Copy the password to your environment or .env file
+The following environment variables can be configured in your `.env` file:
 
-## MCP Configuration
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| GITLAB_TOKEN | Yes | - | Your GitLab personal access token |
+| GITLAB_HOST | No | gitlab.com | GitLab instance hostname |
+| GITLAB_API_VERSION | No | v4 | GitLab API version to use |
+| LOG_LEVEL | No | INFO | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+| DEBUG | No | false | Enable debug mode |
+| REQUEST_TIMEOUT | No | 30 | API request timeout in seconds |
+| MAX_RETRIES | No | 3 | Maximum retry attempts for failed requests |
 
-To use this MCP server with Cursor, you need to add its configuration to your `~/.cursor/mcp.json` file. Here's the required configuration:
+## Cursor IDE Integration
+
+To use this MCP with Cursor IDE, add this configuration to your `~/.cursor/mcp.json` file:
 
 ```json
 {
   "mcpServers": {
-    "gerrit-review-mcp": {
-      "command": "/path/to/your/workspace/gerrit-code-review-mcp/.venv/bin/python",
+    "gitlab-mcp-code-review": {
+      "command": "/path/to/your/gitlab-mcp-code-review/.venv/bin/python",
       "args": [
-        "/path/to/your/workspace/gerrit-code-review-mcp/server.py",
+        "/path/to/your/gitlab-mcp-code-review/server.py",
         "--transport",
         "stdio"
       ],
-      "cwd": "/path/to/your/workspace/gerrit-code-review-mcp",
+      "cwd": "/path/to/your/gitlab-mcp-code-review",
       "env": {
-        "PYTHONPATH": "/path/to/your/workspace/gerrit-code-review-mcp",
-        "VIRTUAL_ENV": "/path/to/your/workspace/gerrit-code-review-mcp/.venv",
-        "PATH": "/path/to/your/workspace/gerrit-code-review-mcp/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+        "PYTHONPATH": "/path/to/your/gitlab-mcp-code-review",
+        "VIRTUAL_ENV": "/path/to/your/gitlab-mcp-code-review/.venv",
+        "PATH": "/path/to/your/gitlab-mcp-code-review/.venv/bin:/usr/local/bin:/usr/bin:/bin"
       },
       "stdio": true
     }
@@ -129,44 +97,82 @@ To use this MCP server with Cursor, you need to add its configuration to your `~
 }
 ```
 
-Replace `/path/to/your/workspace` with your actual workspace path. For example, if your project is in `/Users/username/projects/gerrit-code-review-mcp`, use that path instead.
+Replace `/path/to/your/gitlab-mcp-code-review` with the actual path to your cloned repository.
 
-Make sure all paths in the configuration point to:
-- Your virtual environment's Python interpreter
-- The project's `server.py` file
-- The correct working directory
-- The virtual environment's bin directory in the PATH
+## Available Tools
 
-## Implementation Details
+The MCP server provides the following tools for interacting with GitLab:
 
-The server uses Gerrit REST API to interact with Gerrit, providing:
-- Fast and reliable change information retrieval
-- Secure authentication using HTTP digest auth
-- Support for various Gerrit REST endpoints
-- Clean and maintainable codebase
-- HTTPS encryption for secure communication
+| Tool | Description |
+|------|-------------|
+| `fetch_merge_request` | Get complete information about a merge request |
+| `fetch_merge_request_diff` | Get diffs for a specific merge request |
+| `fetch_commit_diff` | Get diff information for a specific commit |
+| `compare_versions` | Compare different branches, tags, or commits |
+| `add_merge_request_comment` | Add a comment to a merge request |
+| `approve_merge_request` | Approve a merge request |
+| `unapprove_merge_request` | Unapprove a merge request |
+| `get_project_merge_requests` | Get a list of merge requests for a project |
+
+## Usage Examples
+
+### Fetch a Merge Request
+
+```python
+# Get details of merge request #5 in project with ID 123
+mr = fetch_merge_request("123", "5")
+```
+
+### View Specific File Changes
+
+```python
+# Get diff for a specific file in a merge request
+file_diff = fetch_merge_request_diff("123", "5", "path/to/file.js")
+```
+
+### Compare Branches
+
+```python
+# Compare develop branch with master branch
+diff = compare_versions("123", "develop", "master")
+```
+
+### Add a Comment to a Merge Request
+
+```python
+# Add a comment to a merge request
+comment = add_merge_request_comment("123", "5", "This code looks good!")
+```
+
+### Approve a Merge Request
+
+```python
+# Approve a merge request and set required approvals to 2
+approval = approve_merge_request("123", "5", approvals_required=2)
+```
 
 ## Troubleshooting
 
-If you encounter connection issues:
-1. Verify your HTTP password is correctly set
-2. Check GERRIT_HOST setting
-3. Ensure HTTPS access is enabled on Gerrit server
-4. Test connection using curl:
-   ```bash
-   curl -u "username:http-password" https://your-gerrit-host/a/changes/
-   ```
-5. Verify Gerrit access permissions for your account
+If you encounter issues:
 
-## License
-
-This project is licensed under the MIT License.
+1. Verify your GitLab token has the appropriate permissions (api, read_api)
+2. Check your `.env` file settings
+3. Ensure your MCP configuration paths are correct
+4. Test connection with: `curl -H "Private-Token: your-token" https://gitlab.com/api/v4/projects`
+5. Set LOG_LEVEL=DEBUG in your .env file for more detailed logging
 
 ## Contributing
 
-We welcome contributions! Please:
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+See the [CONTRIBUTING.md](CONTRIBUTING.md) file for more details on the development process.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

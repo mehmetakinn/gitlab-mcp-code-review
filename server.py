@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, List
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -19,76 +19,69 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 @dataclass
-class GerritContext:
+class GitLabContext:
     host: str
-    user: str
-    http_password: Optional[str] = None
+    token: str
+    api_version: str = "v4"
 
-def make_gerrit_rest_request(ctx: Context, endpoint: str) -> Dict[str, Any]:
-    """Make a REST API request to Gerrit and handle the response"""
-    gerrit_ctx = ctx.request_context.lifespan_context
+def make_gitlab_api_request(ctx: Context, endpoint: str, method: str = "GET", data: Optional[Dict[str, Any]] = None) -> Any:
+    """Make a REST API request to GitLab and handle the response"""
+    gitlab_ctx = ctx.request_context.lifespan_context
     
-    if not gerrit_ctx.http_password:
-        logger.error("HTTP password not set in context")
-        raise ValueError("HTTP password not set. Please set GERRIT_HTTP_PASSWORD in your environment.")
-        
-    # Ensure endpoint starts with 'a/' for authenticated requests
-    if not endpoint.startswith('a/'):
-        endpoint = f'a/{endpoint}'
+    if not gitlab_ctx.token:
+        logger.error("GitLab token not set in context")
+        raise ValueError("GitLab token not set. Please set GITLAB_TOKEN in your environment.")
     
-    url = f"https://{gerrit_ctx.host}/{endpoint}"
-    auth = requests.auth.HTTPDigestAuth(gerrit_ctx.user, gerrit_ctx.http_password)
+    url = f"https://{gitlab_ctx.host}/api/{gitlab_ctx.api_version}/{endpoint}"
+    headers = {
+        'Accept': 'application/json',
+        'User-Agent': 'GitLabMCPCodeReview/1.0',
+        'Private-Token': gitlab_ctx.token
+    }
     
     try:
-        headers = {
-            'Accept': 'application/json',
-            'User-Agent': 'GerritReviewMCP/1.0'
-        }
-        response = requests.get(url, auth=auth, headers=headers, verify=True)
+        if method.upper() == "GET":
+            response = requests.get(url, headers=headers, verify=True)
+        elif method.upper() == "POST":
+            response = requests.post(url, headers=headers, json=data, verify=True)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
         
         if response.status_code == 401:
-            logger.error("Authentication failed. Check your credentials.")
-            raise Exception("Authentication failed. Please check your Gerrit HTTP password in your account settings.")
+            logger.error("Authentication failed. Check your GitLab token.")
+            raise Exception("Authentication failed. Please check your GitLab token.")
             
         response.raise_for_status()
         
-        # Remove Gerrit's XSSI prefix if present
-        content = response.text
-        if content.startswith(")]}'"):
-            content = content[4:]
+        if not response.content:
+            return {}
             
         try:
-            return json.loads(content)
+            return response.json()
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {str(e)}")
-            raise Exception(f"Failed to parse Gerrit response as JSON: {str(e)}")
+            raise Exception(f"Failed to parse GitLab response as JSON: {str(e)}")
             
     except requests.exceptions.RequestException as e:
         logger.error(f"REST request failed: {str(e)}")
         if hasattr(e, 'response'):
             logger.error(f"Response status: {e.response.status_code}")
-        raise Exception(f"Failed to make Gerrit REST API request: {str(e)}")
+        raise Exception(f"Failed to make GitLab API request: {str(e)}")
 
 @asynccontextmanager
-async def gerrit_lifespan(server: FastMCP) -> AsyncIterator[GerritContext]:
-    """Manage Gerrit connection details"""
-    host = os.getenv("GERRIT_HOST", "")
-    user = os.getenv("GERRIT_USER", "")
-    http_password = os.getenv("GERRIT_HTTP_PASSWORD", "")
+async def gitlab_lifespan(server: FastMCP) -> AsyncIterator[GitLabContext]:
+    """Manage GitLab connection details"""
+    host = os.getenv("GITLAB_HOST", "gitlab.com")
+    token = os.getenv("GITLAB_TOKEN", "")
     
-    if not all([host, user]):
-        logger.error("Missing required environment variables:")
-        if not host: logger.error("- GERRIT_HOST not set")
-        if not user: logger.error("- GERRIT_USER not set")
+    if not token:
+        logger.error("Missing required environment variable: GITLAB_TOKEN")
         raise ValueError(
-            "Missing required environment variables: GERRIT_HOST, GERRIT_USER. "
-            "Please set these in your environment or .env file."
+            "Missing required environment variable: GITLAB_TOKEN. "
+            "Please set this in your environment or .env file."
         )
-
-    if not http_password:
-        logger.warning("GERRIT_HTTP_PASSWORD not set - REST API calls will fail")
     
-    ctx = GerritContext(host=host, user=user, http_password=http_password)
+    ctx = GitLabContext(host=host, token=token)
     try:
         yield ctx
     finally:
@@ -96,163 +89,232 @@ async def gerrit_lifespan(server: FastMCP) -> AsyncIterator[GerritContext]:
 
 # Create MCP server
 mcp = FastMCP(
-    "Gerrit Review",
-    description="MCP server for reviewing Gerrit changes",
-    lifespan=gerrit_lifespan,
+    "GitLab MCP for Code Review",
+    description="MCP server for reviewing GitLab code changes",
+    lifespan=gitlab_lifespan,
     dependencies=["python-dotenv", "requests"]
 )
 
 @mcp.tool()
-def fetch_gerrit_change(ctx: Context, change_id: str, patchset_number: str = None) -> Dict[str, Any]:
+def fetch_merge_request(ctx: Context, project_id: str, merge_request_iid: str) -> Dict[str, Any]:
     """
-    Fetch a Gerrit change and its contents.
+    Fetch a GitLab merge request and its contents.
     
     Args:
-        change_id: The Gerrit change ID to fetch
-        patchset_number: Optional patchset number to fetch (defaults to latest)
+        project_id: The GitLab project ID or URL-encoded path
+        merge_request_iid: The merge request IID (project-specific ID)
     Returns:
-        Dict containing the raw change information including files and diffs
+        Dict containing the merge request information
     """
-    # Get change details using REST API with all required information
-    change_endpoint = f"a/changes/{change_id}/detail?o=CURRENT_REVISION&o=CURRENT_COMMIT&o=MESSAGES&o=DETAILED_LABELS&o=DETAILED_ACCOUNTS&o=ALL_REVISIONS&o=ALL_COMMITS&o=ALL_FILES&o=COMMIT_FOOTERS"
-    change_info = make_gerrit_rest_request(ctx, change_endpoint)
+    # Get merge request details
+    mr_endpoint = f"projects/{quote(project_id, safe='')}/merge_requests/{merge_request_iid}"
+    mr_info = make_gitlab_api_request(ctx, mr_endpoint)
     
-    if not change_info:
-        raise ValueError(f"Change {change_id} not found")
-        
-    # Extract project and ref information
-    project = change_info.get("project")
-    if not project:
-        raise ValueError("Project information not found in change")
-        
-    # Get the target patchset
-    current_revision = change_info.get("current_revision")
-    revisions = change_info.get("revisions", {})
+    if not mr_info:
+        raise ValueError(f"Merge request {merge_request_iid} not found in project {project_id}")
     
-    if patchset_number:
-        # Find specific patchset
-        target_revision = None
-        for rev, rev_info in revisions.items():
-            if str(rev_info.get("_number")) == str(patchset_number):
-                target_revision = rev
-                break
-        if not target_revision:
-            available_patchsets = sorted([str(info.get("_number")) for info in revisions.values()])
-            raise ValueError(f"Patchset {patchset_number} not found. Available patchsets: {', '.join(available_patchsets)}")
-    else:
-        # Use current revision
-        target_revision = current_revision
+    # Get the changes (diffs) for this merge request
+    changes_endpoint = f"{mr_endpoint}/changes"
+    changes_info = make_gitlab_api_request(ctx, changes_endpoint)
     
-    if not target_revision or target_revision not in revisions:
-        raise ValueError("Revision information not found")
-
-    revision_info = revisions[target_revision]
+    # Get the commit information
+    commits_endpoint = f"{mr_endpoint}/commits"
+    commits_info = make_gitlab_api_request(ctx, commits_endpoint)
     
-    # Process each file
-    processed_files = []
-    for file_path, file_info in revision_info.get("files", {}).items():
-        if file_path == "/COMMIT_MSG":
-            continue
-            
-        # Get the diff for this file
-        encoded_path = quote(file_path, safe='')
-        diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files/{encoded_path}/diff"
-        diff_info = make_gerrit_rest_request(ctx, diff_endpoint)
-        
-        file_data = {
-            "path": file_path,
-            "status": file_info.get("status", "MODIFIED"),
-            "lines_inserted": file_info.get("lines_inserted", 0),
-            "lines_deleted": file_info.get("lines_deleted", 0),
-            "size_delta": file_info.get("size_delta", 0),
-            "diff": diff_info
-        }
-        processed_files.append(file_data)
+    # Get the notes (comments) for this merge request
+    notes_endpoint = f"{mr_endpoint}/notes"
+    notes_info = make_gitlab_api_request(ctx, notes_endpoint)
     
-    # Return the complete change information
     return {
-        "change_info": change_info,
-        "project": project,
-        "revision": target_revision,
-        "patchset": revision_info,
-        "files": processed_files
+        "merge_request": mr_info,
+        "changes": changes_info,
+        "commits": commits_info,
+        "notes": notes_info
     }
 
 @mcp.tool()
-def fetch_patchset_diff(ctx: Context, change_id: str, base_patchset: str, target_patchset: str, file_path: Optional[str] = None) -> Dict[str, Any]:
+def fetch_merge_request_diff(ctx: Context, project_id: str, merge_request_iid: str, file_path: Optional[str] = None) -> Dict[str, Any]:
     """
-    Fetch differences between two patchsets of a Gerrit change.
+    Fetch the diff for a specific file in a merge request, or all files if none specified.
     
     Args:
-        change_id: The Gerrit change ID
-        base_patchset: The base patchset number to compare from
-        target_patchset: The target patchset number to compare to
-        file_path: Optional specific file path to get diff for. If not provided, returns diffs for all changed files.
+        project_id: The GitLab project ID or URL-encoded path
+        merge_request_iid: The merge request IID (project-specific ID)
+        file_path: Optional specific file path to get diff for
     Returns:
-        Dict containing the diff information between the patchsets
+        Dict containing the diff information
     """
-    # First get the revision info for both patchsets
-    change_endpoint = f"a/changes/{change_id}/detail?o=ALL_REVISIONS&o=ALL_FILES"
-    change_info = make_gerrit_rest_request(ctx, change_endpoint)
+    # Get the changes for this merge request
+    changes_endpoint = f"projects/{quote(project_id, safe='')}/merge_requests/{merge_request_iid}/changes"
+    changes_info = make_gitlab_api_request(ctx, changes_endpoint)
     
-    if not change_info:
-        raise ValueError(f"Change {change_id} not found")
+    if not changes_info:
+        raise ValueError(f"Changes not found for merge request {merge_request_iid}")
     
-    revisions = change_info.get("revisions", {})
+    # Extract all changes
+    files = changes_info.get("changes", [])
     
-    # Find revision hashes for both patchsets
-    base_revision = None
-    target_revision = None
-    for rev, rev_info in revisions.items():
-        if str(rev_info.get("_number")) == str(base_patchset):
-            base_revision = rev
-        if str(rev_info.get("_number")) == str(target_patchset):
-            target_revision = rev
-            
-    if not base_revision or not target_revision:
-        available_patchsets = sorted([str(info.get("_number")) for info in revisions.values()])
-        raise ValueError(f"Patchset(s) not found. Available patchsets: {', '.join(available_patchsets)}")
-
-    # Get the diff between revisions using Gerrit's comparison endpoint
-    diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files"
-    if base_revision:
-        diff_endpoint += f"?base={base_revision}"
-    
-    files_diff = make_gerrit_rest_request(ctx, diff_endpoint)
-    
-    # Process the files that actually changed
-    changed_files = {}
-    for file_path, file_info in files_diff.items():
-        if file_path == "/COMMIT_MSG":
-            continue
-            
-        if file_info.get("status") != "SAME":  # Only include files that actually changed
-            # Get detailed diff for this file
-            encoded_path = quote(file_path, safe='')
-            file_diff_endpoint = f"a/changes/{change_id}/revisions/{target_revision}/files/{encoded_path}/diff"
-            if base_revision:
-                file_diff_endpoint += f"?base={base_revision}"
-            diff_info = make_gerrit_rest_request(ctx, file_diff_endpoint)
-            
-            changed_files[file_path] = {
-                "status": file_info.get("status", "MODIFIED"),
-                "lines_inserted": file_info.get("lines_inserted", 0),
-                "lines_deleted": file_info.get("lines_deleted", 0),
-                "size_delta": file_info.get("size_delta", 0),
-                "diff": diff_info
-            }
+    # Filter by file path if specified
+    if file_path:
+        files = [f for f in files if f.get("new_path") == file_path or f.get("old_path") == file_path]
+        if not files:
+            raise ValueError(f"File '{file_path}' not found in the merge request changes")
     
     return {
-        "base_revision": base_revision,
-        "target_revision": target_revision,
-        "base_patchset": base_patchset,
-        "target_patchset": target_patchset,
-        "files": changed_files
+        "merge_request_iid": merge_request_iid,
+        "files": files
     }
+
+@mcp.tool()
+def fetch_commit_diff(ctx: Context, project_id: str, commit_sha: str, file_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Fetch the diff for a specific commit, or for a specific file in that commit.
+    
+    Args:
+        project_id: The GitLab project ID or URL-encoded path
+        commit_sha: The commit SHA
+        file_path: Optional specific file path to get diff for
+    Returns:
+        Dict containing the diff information
+    """
+    # Get the diff for this commit
+    diff_endpoint = f"projects/{quote(project_id, safe='')}/repository/commits/{commit_sha}/diff"
+    diff_info = make_gitlab_api_request(ctx, diff_endpoint)
+    
+    if not diff_info:
+        raise ValueError(f"Diff not found for commit {commit_sha}")
+    
+    # Filter by file path if specified
+    if file_path:
+        diff_info = [d for d in diff_info if d.get("new_path") == file_path or d.get("old_path") == file_path]
+        if not diff_info:
+            raise ValueError(f"File '{file_path}' not found in the commit diff")
+    
+    # Get the commit details
+    commit_endpoint = f"projects/{quote(project_id, safe='')}/repository/commits/{commit_sha}"
+    commit_info = make_gitlab_api_request(ctx, commit_endpoint)
+    
+    return {
+        "commit": commit_info,
+        "diffs": diff_info
+    }
+
+@mcp.tool()
+def compare_versions(ctx: Context, project_id: str, from_sha: str, to_sha: str) -> Dict[str, Any]:
+    """
+    Compare two commits/branches/tags to see the differences between them.
+    
+    Args:
+        project_id: The GitLab project ID or URL-encoded path
+        from_sha: The source commit/branch/tag
+        to_sha: The target commit/branch/tag
+    Returns:
+        Dict containing the comparison information
+    """
+    # Compare the versions
+    compare_endpoint = f"projects/{quote(project_id, safe='')}/repository/compare?from={quote(from_sha, safe='')}&to={quote(to_sha, safe='')}"
+    compare_info = make_gitlab_api_request(ctx, compare_endpoint)
+    
+    if not compare_info:
+        raise ValueError(f"Comparison failed between {from_sha} and {to_sha}")
+    
+    return compare_info
+
+@mcp.tool()
+def add_merge_request_comment(ctx: Context, project_id: str, merge_request_iid: str, body: str, position: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Add a comment to a merge request, optionally at a specific position in a file.
+    
+    Args:
+        project_id: The GitLab project ID or URL-encoded path
+        merge_request_iid: The merge request IID (project-specific ID)
+        body: The comment text
+        position: Optional position data for line comments
+    Returns:
+        Dict containing the created comment information
+    """
+    # Create the comment data
+    data = {
+        "body": body
+    }
+    
+    # Add position data if provided
+    if position:
+        data["position"] = position
+    
+    # Add the comment
+    comment_endpoint = f"projects/{quote(project_id, safe='')}/merge_requests/{merge_request_iid}/notes"
+    comment_info = make_gitlab_api_request(ctx, comment_endpoint, method="POST", data=data)
+    
+    if not comment_info:
+        raise ValueError("Failed to add comment to merge request")
+    
+    return comment_info
+
+@mcp.tool()
+def approve_merge_request(ctx: Context, project_id: str, merge_request_iid: str, approvals_required: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Approve a merge request.
+    
+    Args:
+        project_id: The GitLab project ID or URL-encoded path
+        merge_request_iid: The merge request IID (project-specific ID)
+        approvals_required: Optional number of required approvals to set
+    Returns:
+        Dict containing the approval information
+    """
+    # Approve the merge request
+    approve_endpoint = f"projects/{quote(project_id, safe='')}/merge_requests/{merge_request_iid}/approve"
+    approve_info = make_gitlab_api_request(ctx, approve_endpoint, method="POST")
+    
+    # Set required approvals if specified
+    if approvals_required is not None:
+        approvals_endpoint = f"projects/{quote(project_id, safe='')}/merge_requests/{merge_request_iid}/approvals"
+        data = {
+            "approvals_required": approvals_required
+        }
+        make_gitlab_api_request(ctx, approvals_endpoint, method="POST", data=data)
+    
+    return approve_info
+
+@mcp.tool()
+def unapprove_merge_request(ctx: Context, project_id: str, merge_request_iid: str) -> Dict[str, Any]:
+    """
+    Unapprove a merge request.
+    
+    Args:
+        project_id: The GitLab project ID or URL-encoded path
+        merge_request_iid: The merge request IID (project-specific ID)
+    Returns:
+        Dict containing the unapproval information
+    """
+    # Unapprove the merge request
+    unapprove_endpoint = f"projects/{quote(project_id, safe='')}/merge_requests/{merge_request_iid}/unapprove"
+    unapprove_info = make_gitlab_api_request(ctx, unapprove_endpoint, method="POST")
+    
+    return unapprove_info
+
+@mcp.tool()
+def get_project_merge_requests(ctx: Context, project_id: str, state: str = "all", limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    Get all merge requests for a project.
+    
+    Args:
+        project_id: The GitLab project ID or URL-encoded path
+        state: Filter merge requests by state (all, opened, closed, merged, or locked)
+        limit: Maximum number of merge requests to return
+    Returns:
+        List of merge request objects
+    """
+    # Get the merge requests
+    mrs_endpoint = f"projects/{quote(project_id, safe='')}/merge_requests?state={state}&per_page={limit}"
+    mrs_info = make_gitlab_api_request(ctx, mrs_endpoint)
+    
+    return mrs_info
 
 if __name__ == "__main__":
     try:
-        logger.info("Starting Gerrit Review MCP server")
+        logger.info("Starting GitLab Review MCP server")
         # Initialize and run the server
         mcp.run(transport='stdio')
     except Exception as e:

@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "gitlab-review-mcp": {
+      "command": "${WORKSPACE_PATH}/.venv/bin/python",
+      "args": [
+        "${WORKSPACE_PATH}/server.py",
+        "--transport",
+        "stdio"
+      ],
+      "cwd": "${WORKSPACE_PATH}",
+      "env": {
+        "PYTHONPATH": "${WORKSPACE_PATH}",
+        "VIRTUAL_ENV": "${WORKSPACE_PATH}/.venv",
+        "PATH": "${WORKSPACE_PATH}/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+      },
+      "stdio": true
+    }
+  }
+} 

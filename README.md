@@ -52,9 +52,10 @@ file_diff = fetch_patchset_diff("23824", "1", "2", "path/to/file.swift")
 
 ## Prerequisites
 
-- Python 3.10 or higher
+- Python 3.10 or higher (Python 3.11 recommended)
 - Gerrit HTTP access credentials
 - HTTP password generated from Gerrit settings
+- Access to the `mcp[cli]` package repository (private package)
 
 ## Installation
 
@@ -66,13 +67,18 @@ cd gerrit-review-mcp
 
 2. Create and activate a virtual environment:
 ```bash
+# For macOS/Linux:
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
+
+# For Windows:
+python -m venv .venv
+.venv\Scripts\activate
 ```
 
-3. Install dependencies:
+3. Install this package in editable mode with its dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ## Configuration

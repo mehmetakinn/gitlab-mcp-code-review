@@ -16,11 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
-try:
-    load_dotenv()
-    logger.info("Successfully loaded .env file")
-except Exception as e:
-    logger.warning(f"Failed to load .env file: {e}")
+load_dotenv()
 
 @dataclass
 class GerritContext:
@@ -35,11 +31,6 @@ def make_gerrit_rest_request(ctx: Context, endpoint: str) -> Dict[str, Any]:
     if not gerrit_ctx.http_password:
         logger.error("HTTP password not set in context")
         raise ValueError("HTTP password not set. Please set GERRIT_HTTP_PASSWORD in your environment.")
-    
-    logger.info(f"Making REST request to endpoint: {endpoint}")
-    logger.info(f"Using Gerrit host: {gerrit_ctx.host}")
-    logger.info(f"Using Gerrit user: {gerrit_ctx.user}")
-    logger.info(f"HTTP password length: {len(gerrit_ctx.http_password) if gerrit_ctx.http_password else 0}")
         
     # Ensure endpoint starts with 'a/' for authenticated requests
     if not endpoint.startswith('a/'):
@@ -48,64 +39,42 @@ def make_gerrit_rest_request(ctx: Context, endpoint: str) -> Dict[str, Any]:
     url = f"https://{gerrit_ctx.host}/{endpoint}"
     auth = requests.auth.HTTPDigestAuth(gerrit_ctx.user, gerrit_ctx.http_password)
     
-    logger.info(f"Full URL: {url}")
-    logger.info(f"Using auth: {auth.username}:*****")  # Log username but not password
-    
     try:
-        logger.info("Sending REST request...")
-        # Add headers for better debugging
         headers = {
             'Accept': 'application/json',
             'User-Agent': 'GerritReviewMCP/1.0'
         }
         response = requests.get(url, auth=auth, headers=headers, verify=True)
-        logger.info(f"Response status code: {response.status_code}")
-        logger.info(f"Response headers: {dict(response.headers)}")
         
         if response.status_code == 401:
             logger.error("Authentication failed. Check your credentials.")
-            logger.error(f"Response body: {response.text}")
-            logger.error("WWW-Authenticate header: " + response.headers.get('WWW-Authenticate', 'Not present'))
             raise Exception("Authentication failed. Please check your Gerrit HTTP password in your account settings.")
             
         response.raise_for_status()
         
         # Remove Gerrit's XSSI prefix if present
         content = response.text
-        logger.info(f"Response content starts with: {content[:50]}...")
-        
         if content.startswith(")]}'"):
             content = content[4:]
-            logger.info("Removed Gerrit XSSI prefix from response")
             
         try:
             return json.loads(content)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {str(e)}")
-            logger.error(f"Raw response content: {content}")
             raise Exception(f"Failed to parse Gerrit response as JSON: {str(e)}")
             
     except requests.exceptions.RequestException as e:
         logger.error(f"REST request failed: {str(e)}")
         if hasattr(e, 'response'):
             logger.error(f"Response status: {e.response.status_code}")
-            logger.error(f"Response body: {e.response.text}")
         raise Exception(f"Failed to make Gerrit REST API request: {str(e)}")
 
 @asynccontextmanager
 async def gerrit_lifespan(server: FastMCP) -> AsyncIterator[GerritContext]:
     """Manage Gerrit connection details"""
-    # Get Gerrit connection details from environment
-    logger.info("Loading environment variables...")
-    
     host = os.getenv("GERRIT_HOST", "")
     user = os.getenv("GERRIT_USER", "")
     http_password = os.getenv("GERRIT_HTTP_PASSWORD", "")
-    
-    logger.info("Environment variables loaded:")
-    logger.info(f"GERRIT_HOST: {host}")
-    logger.info(f"GERRIT_USER: {user}")
-    logger.info(f"GERRIT_HTTP_PASSWORD set: {'yes' if http_password else 'no'}")
     
     if not all([host, user]):
         logger.error("Missing required environment variables:")
@@ -118,8 +87,6 @@ async def gerrit_lifespan(server: FastMCP) -> AsyncIterator[GerritContext]:
 
     if not http_password:
         logger.warning("GERRIT_HTTP_PASSWORD not set - REST API calls will fail")
-
-    logger.info(f"Initializing Gerrit context with host={host}, user={user}")
     
     ctx = GerritContext(host=host, user=user, http_password=http_password)
     try:

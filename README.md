@@ -21,14 +21,14 @@ An MCP (Model Context Protocol) server for integrating AI assistants like Claude
 
 - Python 3.10+ 
 - GitLab personal access token with API scope (read_api, api)
-- [Cursor IDE](https://cursor.sh/) for full MCP integration
+- [Cursor IDE](https://cursor.sh/) or [Claude Desktop App](https://claude.ai/desktop) for MCP integration
 
 ### Quick Start
 
 1. Clone this repository:
 
 ```bash
-git clone https://github.com/yourusername/gitlab-mcp-code-review.git
+git clone https://github.com/mehmetakinn/gitlab-mcp-code-review.git
 cd gitlab-mcp-code-review
 ```
 
@@ -74,6 +74,38 @@ The following environment variables can be configured in your `.env` file:
 ## Cursor IDE Integration
 
 To use this MCP with Cursor IDE, add this configuration to your `~/.cursor/mcp.json` file:
+
+```json
+{
+  "mcpServers": {
+    "gitlab-mcp-code-review": {
+      "command": "/path/to/your/gitlab-mcp-code-review/.venv/bin/python",
+      "args": [
+        "/path/to/your/gitlab-mcp-code-review/server.py",
+        "--transport",
+        "stdio"
+      ],
+      "cwd": "/path/to/your/gitlab-mcp-code-review",
+      "env": {
+        "PYTHONPATH": "/path/to/your/gitlab-mcp-code-review",
+        "VIRTUAL_ENV": "/path/to/your/gitlab-mcp-code-review/.venv",
+        "PATH": "/path/to/your/gitlab-mcp-code-review/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+      },
+      "stdio": true
+    }
+  }
+}
+```
+
+Replace `/path/to/your/gitlab-mcp-code-review` with the actual path to your cloned repository.
+
+## Claude Desktop App Integration
+
+To use this MCP with the Claude Desktop App:
+
+1. Open the Claude Desktop App
+2. Go to Settings → Advanced → MCP Configuration
+3. Add the following configuration:
 
 ```json
 {

@@ -1,0 +1,29 @@
+# Smithery configuration file: https://smithery.ai/docs/build/project-config
+
+startCommand:
+  type: stdio
+  commandFunction:
+    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
+    |-
+    (config) => ({ command: 'python', args: ['server.py'], env: { GITLAB_TOKEN: config.gitlabToken, GITLAB_HOST: config.gitlabHost, GITLAB_API_VERSION: config.gitlabApiVersion } })
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - gitlabToken
+    properties:
+      gitlabToken:
+        type: string
+        description: GitLab personal access token
+      gitlabHost:
+        type: string
+        default: gitlab.com
+        description: GitLab host
+      gitlabApiVersion:
+        type: string
+        default: v4
+        description: GitLab API version
+  exampleConfig:
+    gitlabToken: your_personal_access_token_here
+    gitlabHost: gitlab.com
+    gitlabApiVersion: v4

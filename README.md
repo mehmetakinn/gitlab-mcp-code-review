@@ -2,6 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![smithery badge](https://smithery.ai/badge/@mehmetakinn/gitlab-mcp-code-review)](https://smithery.ai/server/@mehmetakinn/gitlab-mcp-code-review)
 
 > This project is forked from [cayirtepeomer/gerrit-code-review-mcp](https://github.com/cayirtepeomer/gerrit-code-review-mcp) and adapted for GitLab integration.
 
@@ -16,6 +17,14 @@ An MCP (Model Context Protocol) server for integrating AI assistants like Claude
 - **Project Overview**: Get lists of all merge requests in a project
 
 ## Installation
+
+### Installing via Smithery
+
+To install GitLab Code Review Integration for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@mehmetakinn/gitlab-mcp-code-review):
+
+```bash
+npx -y @smithery/cli install @mehmetakinn/gitlab-mcp-code-review --client claude
+```
 
 ### Prerequisites
 
